@@ -1,0 +1,23 @@
+image: golang:1.15.7
+
+stages:
+    - download
+    - execute
+
+compile:
+    stage: download
+    script:
+        - echo "Compiling test_pckg.go"
+        - mkdir bin
+        - go get -v -d ./...
+        - go build -o ./bin/usePost05 test_pckg.go
+    artifacts:
+        paths:
+            - bin/
+
+execute:
+    stage: execute
+    script:
+        - echo "Executing test_pckg"
+        - ls -l bin
+        - ./bin/usePost05
