@@ -1,30 +1,56 @@
-name: Go + PostgreSQL
+name: Go CI with Docker and PostgreSQL
 
-on: [push]
+on:
+  push:
+    branches: [main]
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mydb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v2
-    - uses: actions/setup-go@v2
-      with:
-        stable: 'false'
-        go-version: '1.15.7'
+      - uses: actions/checkout@v4
 
-    - name: Publish Docker Image
-      env:
-         USERNAME: ${{ secrets.USERNAME }}
-         PASSWORD: ${{ secrets.PASSWORD }}
-         IMAGE_NAME: gopost
-      run: |
-        docker images
-        docker build -t "$IMAGE_NAME" .
-        docker images
-        echo "$PASSWORD" | docker login --username "$USERNAME" --password-stdin
-        docker tag "${IMAGE_NAME}" "$USERNAME/${IMAGE_NAME}:latest"
-        docker push "$USERNAME/${IMAGE_NAME}:latest"
-        echo "* Running Docker Image"
-        docker run ${IMAGE_NAME}:latest
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Run Tests
+        run: go test ./...
+
+      - name: Lint
+        run: go vet ./...
+
+      - name: Build Docker image
+        run: |
+          docker build --cache-from=type=local,src=/tmp/.buildx-cache \
+                       --cache-to=type=local,dest=/tmp/.buildx-cache \
+                       -t ${{ secrets.USERNAME }}/gopost:latest .
+
+      - name: Push Docker image
+        run: |
+          echo "${{ secrets.PASSWORD }}" | docker login --username "${{ secrets.USERNAME }}" --password-stdin
+          docker push ${{ secrets.USERNAME }}/gopost:latest
